@@ -23,7 +23,7 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': [
+        'console_scripts': [ 'voice_command_node = voice_robot_control.voice_command_node:main',
         ],
     },
 )
