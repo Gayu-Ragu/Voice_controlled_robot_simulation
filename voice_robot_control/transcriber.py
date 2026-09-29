@@ -1,10 +1,22 @@
 import time
+import math
 import sounddevice as sd
 import numpy as np
+from scipy.signal import resample_poly
 from transformers import pipeline
 
-SAMPLE_RATE = 16000
+MIC_DEVICE_INDEX = 6
+MIC_SAMPLE_RATE = 48000
+SAMPLE_RATE = 16000  # Whisper's required input rate
 MODEL_NAME = "openai/whisper-large-v3"
+
+def _resample(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+    if orig_sr == target_sr:
+        return audio
+    gcd = math.gcd(orig_sr, target_sr)
+    up = target_sr // gcd
+    down = orig_sr // gcd
+    return resample_poly(audio, up, down).astype("float32")
 
 class Transcriber:
     def __init__(self, model_name: str = MODEL_NAME):
@@ -20,7 +32,13 @@ class Transcriber:
         start_time = time.time()
 
         while time.time() - start_time < max_seconds:
-            chunk = sd.rec(int(chunk_duration * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=1, dtype="float32")
+            chunk = sd.rec(
+                int(chunk_duration * MIC_SAMPLE_RATE),
+                samplerate=MIC_SAMPLE_RATE,
+                channels=1,
+                dtype="float32",
+                device=MIC_DEVICE_INDEX,
+            )
             sd.wait()
             chunk = chunk.flatten()
             energy = np.sqrt(np.mean(chunk ** 2))
@@ -37,7 +55,9 @@ class Transcriber:
 
         if not chunks:
             return np.array([], dtype="float32")
-        return np.concatenate(chunks)
+
+        full_audio = np.concatenate(chunks)
+        return _resample(full_audio, MIC_SAMPLE_RATE, SAMPLE_RATE)
 
     def transcribe(self, audio: np.ndarray) -> str:
         result = self.pipe({"array": audio, "sampling_rate": SAMPLE_RATE})
